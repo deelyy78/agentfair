@@ -1,0 +1,9 @@
+# secrets — NEVER commit
+deployer.txt
+*.key
+deploy-out.json
+deploy-err.txt
+# foundry build artifacts
+out/
+cache/
+broadcast/

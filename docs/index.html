@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AgentFair — Fair Drops for Agent ID Holders</title>
+<style>
+  :root { --bg:#0b0e13; --card:#141922; --line:#232b38; --txt:#e8edf4; --mut:#8b96a7; --acc:#f0b90b; --ok:#2ebd85; --bad:#f6465d; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt); font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+  .wrap { max-width:860px; margin:0 auto; padding:20px 16px 60px; }
+  header { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
+  h1 { font-size:26px; margin:0; } h1 span { color:var(--acc); }
+  h2 { font-size:17px; margin:0 0 10px; }
+  p.sub { color:var(--mut); margin:6px 0 0; line-height:1.5; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px; margin-top:16px; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  button { background:var(--acc); color:#111; border:0; border-radius:10px; padding:10px 16px; font-weight:700; cursor:pointer; }
+  button.ghost { background:transparent; color:var(--txt); border:1px solid var(--line); }
+  button:disabled { opacity:.45; cursor:not-allowed; }
+  input, textarea { background:#0d1117; color:var(--txt); border:1px solid var(--line); border-radius:10px; padding:10px; width:100%; }
+  label { font-size:13px; color:var(--mut); display:block; margin:10px 0 4px; }
+  .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; }
+  .stat { background:#0d1117; border:1px solid var(--line); border-radius:12px; padding:12px; }
+  .stat b { font-size:22px; display:block; }
+  .stat span { color:var(--mut); font-size:12px; }
+  .drop { border:1px solid var(--line); border-radius:12px; padding:12px; margin-top:10px; background:#0d1117; }
+  .drop h3 { margin:0 0 4px; font-size:15px; }
+  .meta { color:var(--mut); font-size:12.5px; line-height:1.6; word-break:break-all; }
+  .pill { display:inline-block; padding:2px 9px; border-radius:99px; font-size:11.5px; border:1px solid var(--line); color:var(--mut); }
+  .pill.ok { color:var(--ok); border-color:var(--ok); } .pill.bad { color:var(--bad); border-color:var(--bad); }
+  #msg { margin-top:14px; font-size:14px; min-height:20px; }
+  a { color:var(--acc); }
+  footer { color:var(--mut); font-size:12.5px; margin-top:26px; line-height:1.7; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Agent<span>Fair</span></h1>
+      <p class="sub">Fair drops for Agent ID holders. <b>One Agent ID = one fair claim</b> — sybil-resistant distribution on BNB Chain, no KYC, no spreadsheets.</p>
+    </div>
+    <button id="btnConnect">Connect Wallet</button>
+  </header>
+
+  <div id="msg"></div>
+
+  <div class="card">
+    <h2>Network stats</h2>
+    <div class="stats">
+      <div class="stat"><b id="stAgents">–</b><span>Registered agents</span></div>
+      <div class="stat"><b id="stCheckIns">–</b><span>Total check-ins</span></div>
+      <div class="stat"><b id="stDrops">–</b><span>Drops created</span></div>
+      <div class="stat"><b id="stClaims">–</b><span>Total claims</span></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Your agent profile</h2>
+    <div class="meta" id="meInfo">Connect your Agentic Wallet to check your Agent ID status.</div>
+    <div class="row" style="margin-top:12px">
+      <button id="btnRegister" disabled>Register</button>
+      <button id="btnCheckIn" class="ghost" disabled>Daily Check-In</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Create a fair Drop</h2>
+    <label>Title</label>
+    <input id="dTitle" placeholder="e.g. Genesis NFT allowlist — 100 slots">
+    <label>Link / what claimants get</label>
+    <input id="dUri" placeholder="https://…">
+    <div class="row">
+      <div style="flex:1;min-width:140px"><label>Slots</label><input id="dSlots" type="number" value="100" min="1" max="100000"></div>
+      <div style="flex:1;min-width:140px"><label>Duration (days)</label><input id="dDays" type="number" value="7" min="1" max="180"></div>
+    </div>
+    <div class="row" style="margin-top:12px"><button id="btnCreate" disabled>Create Drop</button></div>
+    <p class="meta" style="margin-top:8px">Only registered Agent ID holders can create Drops and claim. One claim per Agent ID per Drop, enforced on-chain.</p>
+  </div>
+
+  <div class="card">
+    <h2>Open Drops</h2>
+    <div id="drops"><p class="meta">Loading…</p></div>
+  </div>
+
+  <footer>
+    AgentFair holds no funds and takes no approvals — it only records registrations, check-ins and claims.
+    Points are a non-transferable reputation score with no monetary value. Nothing here promises returns.<br>
+    Agent ID registry (SPACE ID, BNB Chain): <span id="regAddr"></span><br>
+    AgentFair contract: <span id="fairAddr"></span> · Built for the Agent ID Hackathon.
+  </footer>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
+<script>
+// ---------------- config (fill AGENTFAIR after mainnet deploy) ----------------
+const AGENTFAIR = "0xE7C3a3ac6107421C073adC4603184166D908Ae5f";
+const AGENT_ID_REGISTRY = "0x60b9262456de011f7d15a54cdd8c48baaa8b022f";
+const BSC_CHAIN_ID = "0x38"; // 56
+const READ_RPC = "https://bsc.publicnode.com";
+
+const FAIR_ABI = [
+  "function register()",
+  "function checkIn()",
+  "function createDrop(string title, string uri, uint32 slots, uint64 durationSecs) returns (uint256)",
+  "function cancelDrop(uint256 dropId)",
+  "function claim(uint256 dropId)",
+  "function totalAgents() view returns (uint256)",
+  "function totalCheckIns() view returns (uint256)",
+  "function totalClaims() view returns (uint256)",
+  "function dropCount() view returns (uint256)",
+  "function getDrop(uint256 dropId) view returns (address creator, string title, string uri, uint64 startTime, uint64 endTime, uint32 slots, uint32 claimed, bool cancelled)",
+  "function agents(address) view returns (uint64 registeredAt, uint64 lastCheckInDay, uint32 streak, uint32 checkIns, uint256 points, uint256 number)",
+  "function hasClaimed(uint256, address) view returns (bool)",
+  "function isAgentHolder(address) view returns (bool)"
+];
+const REG_ABI = ["function balanceOf(address) view returns (uint256)"];
+
+// ---------------- state ----------------
+let signer = null, account = null;
+const $ = id => document.getElementById(id);
+const deployed = AGENTFAIR !== "0x0000000000000000000000000000000000000000";
+$("regAddr").textContent = AGENT_ID_REGISTRY;
+$("fairAddr").textContent = deployed ? AGENTFAIR : "not deployed yet";
+
+function msg(t, ok) { $("msg").innerHTML = t ? (ok === false ? "⚠️ " : "✅ ") + t : ""; }
+function readFair() { return new ethers.Contract(AGENTFAIR, FAIR_ABI, new ethers.JsonRpcProvider(READ_RPC)); }
+function writeFair() { return new ethers.Contract(AGENTFAIR, FAIR_ABI, signer); }
+async function registry() { return new ethers.Contract(AGENT_ID_REGISTRY, REG_ABI, signer || new ethers.JsonRpcProvider(READ_RPC)); }
+
+async function refreshStats() {
+  if (!deployed) { $("drops").innerHTML = '<p class="meta">Contract not deployed yet — check back soon.</p>'; return; }
+  try {
+    const f = readFair();
+    const [ta, tc, dc, tcl] = await Promise.all([f.totalAgents(), f.totalCheckIns(), f.dropCount(), f.totalClaims()]);
+    $("stAgents").textContent = ta; $("stCheckIns").textContent = tc; $("stDrops").textContent = dc; $("stClaims").textContent = tcl;
+    await renderDrops(f, Number(dc));
+  } catch (e) { console.error(e); }
+}
+
+async function renderDrops(f, count) {
+  if (!count) { $("drops").innerHTML = '<p class="meta">No drops yet — be the first to create one.</p>'; return; }
+  let html = "";
+  for (let i = count - 1; i >= 0; i--) {
+    const d = await f.getDrop(i);
+    const now = Math.floor(Date.now() / 1000);
+    const ended = now > Number(d.endTime), full = Number(d.claimed) >= Number(d.slots);
+    let pill = '<span class="pill ok">OPEN</span>';
+    if (d.cancelled) pill = '<span class="pill bad">CANCELLED</span>';
+    else if (ended) pill = '<span class="pill bad">ENDED</span>';
+    else if (full) pill = '<span class="pill bad">FULL</span>';
+    let mine = "";
+    if (account) {
+      const claimed = await f.hasClaimed(i, account);
+      if (claimed) mine = ' · <span class="pill ok">YOU CLAIMED</span>';
+      else if (!d.cancelled && !ended && !full) mine = ` · <a href="#" onclick="claimDrop(${i});return false;">Claim your slot</a>`;
+      if (account.toLowerCase() === d.creator.toLowerCase() && !d.cancelled) mine += ` · <a href="#" onclick="cancelDrop(${i});return false;">Cancel drop</a>`;
+    }
+    html += `<div class="drop"><h3>${escapeHtml(d.title)} ${pill}${mine}</h3>
+      <div class="meta">Slots: ${d.claimed}/${d.slots} claimed · Ends: ${new Date(Number(d.endTime) * 1000).toLocaleString()}<br>
+      Creator: ${d.creator}<br>${d.uri ? 'Info: <a href="' + escapeHtml(d.uri) + '" target="_blank" rel="noopener">' + escapeHtml(d.uri) + '</a>' : ''}</div></div>`;
+  }
+  $("drops").innerHTML = html;
+}
+
+function escapeHtml(s) { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+
+async function refreshMe() {
+  if (!account) return;
+  const reg = await registry();
+  const holds = (await reg.balanceOf(account)) > 0n;
+  let html = `Wallet: ${account}<br>Agent ID: ${holds ? '<span class="pill ok">HOLDER ✓</span>' : '<span class="pill bad">NOT FOUND</span> — claim your Agent ID in the Binance App first (Wallet → Agent ID banner).'}`;
+  $("btnRegister").disabled = !(holds && deployed);
+  $("btnCheckIn").disabled = !(holds && deployed);
+  $("btnCreate").disabled = !(holds && deployed);
+  if (deployed && holds) {
+    const f = readFair();
+    const a = await f.agents(account);
+    if (Number(a.number) > 0) {
+      html += `<br>AgentFair: Agent #${a.number} · Points: ${a.points} · Streak: ${a.streak} day(s) · Check-ins: ${a.checkIns}`;
+      $("btnRegister").disabled = true; $("btnRegister").textContent = "Registered ✓";
+    }
+  }
+  $("meInfo").innerHTML = html;
+}
+
+async function connect() {
+  if (!window.ethereum) { msg("No wallet found. Open this page in your wallet browser (e.g. Binance Wallet) or install MetaMask.", false); return; }
+  const provider = new ethers.BrowserProvider(window.ethereum);
+  await provider.send("eth_requestAccounts", []);
+  try { await provider.send("wallet_switchEthereumChain", [{ chainId: BSC_CHAIN_ID }]); }
+  catch (e) { msg("Please switch your wallet to BNB Chain (chainId 56).", false); return; }
+  signer = await provider.getSigner();
+  account = await signer.getAddress();
+  $("btnConnect").textContent = account.slice(0, 6) + "…" + account.slice(-4);
+  msg("Wallet connected on BNB Chain.");
+  await refreshMe(); await refreshStats();
+}
+
+async function runTx(fn, okText) {
+  try { msg("Confirm the transaction in your wallet…"); const tx = await fn(); await tx.wait(); msg(okText); await refreshMe(); await refreshStats(); }
+  catch (e) { msg((e.shortMessage || e.message || "Transaction failed").slice(0, 220), false); }
+}
+
+window.claimDrop = id => runTx(() => writeFair().claim(id), "Slot claimed. One Agent ID, one fair claim ✓");
+window.cancelDrop = id => runTx(() => writeFair().cancelDrop(id), "Drop cancelled.");
+
+$("btnConnect").onclick = connect;
+$("btnRegister").onclick = () => runTx(() => writeFair().register(), "Registered on AgentFair. Welcome, agent!");
+$("btnCheckIn").onclick = () => runTx(() => writeFair().checkIn(), "Checked in for today. Streak updated.");
+$("btnCreate").onclick = () => {
+  const title = $("dTitle").value.trim(), uri = $("dUri").value.trim();
+  const slots = parseInt($("dSlots").value || "0", 10), days = parseInt($("dDays").value || "0", 10);
+  if (!title) { msg("Give your Drop a title first.", false); return; }
+  if (!(slots >= 1 && slots <= 100000)) { msg("Slots must be 1–100000.", false); return; }
+  if (!(days >= 1 && days <= 180)) { msg("Duration must be 1–180 days.", false); return; }
+  runTx(() => writeFair().createDrop(title, uri, slots, days * 86400), "Drop created. Share it with Agent ID holders!");
+};
+
+refreshStats();
+</script>
+</body>
+</html>
